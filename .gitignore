@@ -1,0 +1,28 @@
+# TensorRT engines (large binaries, machine-specific)
+*.trt
+*.engine
+
+# ONNX models (proprietary)
+*.onnx
+onnx/
+
+# Python venv
+.venv-bench/
+.venv/
+__pycache__/
+*.pyc
+
+# Build/inference logs
+logs/*.log
+*.err
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Docker temp
+.docker/

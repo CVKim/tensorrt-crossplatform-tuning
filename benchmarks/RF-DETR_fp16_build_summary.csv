@@ -1,0 +1,4 @@
+fp32_01_base_directIO,rf-detr.onnx,167919756,160.14,69,0,"--hardwareCompatibilityLevel=ampere+ --directIO --tacticSources=+CUBLAS_LT"
+fp32_02_base,rf-detr.onnx,168598396,160.79,67,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT"
+fp32_09_verCompat,rf-detr.onnx,167537700,159.78,63,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --maxAuxStreams=0 --profilingVerbosity=none --versionCompatible --excludeLeanRuntime"
+fp32_06_stripped,rf-detr.onnx,53698460,51.21,470,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --maxAuxStreams=0 --profilingVerbosity=none --stripWeights"

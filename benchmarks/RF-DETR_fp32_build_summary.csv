@@ -1,0 +1,6 @@
+name,onnx_variant,engine_bytes,engine_mib,build_seconds,exit_code,extra_flags
+fp32_01_base_directIO,rf-detr.onnx,166296316,158.59,75,0,"--hardwareCompatibilityLevel=ampere+ --directIO --tacticSources=+CUBLAS_LT"
+fp32_02_base,rf-detr.onnx,167636508,159.87,68,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT"
+fp32_09_verCompat,rf-detr.onnx,168592436,160.78,63,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --versionCompatible --excludeLeanRuntime"
+fp32_12_strict,rf-detr.onnx,166617404,158.90,69,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --precisionConstraints=obey"
+fp32_15_strict_verCompat,rf-detr.onnx,166955724,159.22,61,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --precisionConstraints=obey --versionCompatible --excludeLeanRuntime"

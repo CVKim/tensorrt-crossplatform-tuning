@@ -1,0 +1,6 @@
+name,onnx_variant,engine_bytes,engine_mib,build_seconds,exit_code,extra_flags
+fp32_01_base_directIO,d-fine.onnx,161969940,154.47,154,0,"--hardwareCompatibilityLevel=ampere+ --directIO --tacticSources=+CUBLAS_LT"
+fp32_02_base,d-fine.onnx,163393140,155.82,150,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT"
+fp32_09_verCompat,d-fine.onnx,161759196,154.27,181,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --versionCompatible --excludeLeanRuntime"
+fp32_12_strict,d-fine.onnx,164005188,156.41,154,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --precisionConstraints=obey"
+fp32_15_strict_verCompat,d-fine.onnx,163865772,156.27,185,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --precisionConstraints=obey --versionCompatible --excludeLeanRuntime"
