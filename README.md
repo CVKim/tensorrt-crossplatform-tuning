@@ -4,13 +4,16 @@ Linux 서버에서 빌드 → Windows AMD64 런타임으로 deploy 하는 cross-
 
 ---
 
-## TL;DR
+## TL;DR — FP16 / FP32 분기 처리
 
-기존 cross-platform FP16 변환 cmd 에 **3 옵션 추가** + 1 옵션 제거:
+회사 파이프라인은 precision 별로 **다른 cmd** 적용:
+
+### ✅ FP16 변환 (권장)
 
 ```bash
 trtexec \
   --tacticSources=+CUBLAS_LT \
+  --directIO \
   --runtimePlatform=WindowsAMD64 \
   --hardwareCompatibilityLevel=ampere+ \
   --precisionConstraints=obey \
@@ -21,10 +24,42 @@ trtexec \
   --fp16
 ```
 
-기존 cmd 대비:
+기존 사용자 cmd 에 **3 옵션 추가**:
 - ➕ `--precisionConstraints=obey` — FP32 fallback cubin 제거 (disk 감축, transformer 에서 큰 효과)
-- ➕ `--versionCompatible --excludeLeanRuntime` — lean runtime header 사용 (loading 감축, **모든 모델**)
-- `--directIO` 는 효과 0 이지만 유지해도 무해 (cmd 호환성 차원에서 유지 권장)
+- ➕ `--versionCompatible` — lean runtime header (loading 감축, **모든 모델**)
+- ➕ `--excludeLeanRuntime` — versionCompatible 의 짝
+- `--directIO` 는 그대로 유지 (효과 0 이지만 무해)
+
+### ✅ FP32 변환 (기존 cmd 그대로)
+
+```bash
+trtexec \
+  --tacticSources=+CUBLAS_LT \
+  --directIO \
+  --runtimePlatform=WindowsAMD64 \
+  --hardwareCompatibilityLevel=ampere+ \
+  --onnx=$ONNX \
+  --saveEngine=$ENGINE
+```
+
+**FP32 에는 3 옵션을 추가하지 마세요**:
+- `--precisionConstraints=obey` 는 FP32 에서 no-op (제거할 fallback 없음)
+- `--versionCompatible --excludeLeanRuntime` 은 FP32 에서 살짝 손해 (loading +50~150 ms)
+
+이유는 [docs/06-fp32-comparison.md](docs/06-fp32-comparison.md) 참조.
+
+### 파이프라인 wrapper 예시
+
+```bash
+if [[ "$PRECISION" == "fp16" ]]; then
+  trtexec ... --fp16 \
+    --precisionConstraints=obey \
+    --versionCompatible \
+    --excludeLeanRuntime
+else
+  trtexec ...      # FP32: 기존 cmd 유지
+fi
+```
 
 ## 검증된 효과 (TensorRT 10.8.0.43, RTX 3080 build / Windows runtime)
 
