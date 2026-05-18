@@ -4,13 +4,16 @@ Linux 서버에서 빌드 → Windows AMD64 런타임으로 deploy 하는 cross-
 
 ---
 
-## TL;DR
+## TL;DR — FP16 / FP32 분기 처리
 
-기존 cross-platform FP16 변환 cmd 에 **3 옵션 추가** + 1 옵션 제거:
+회사 파이프라인은 precision 별로 **다른 cmd** 적용:
+
+### ✅ FP16 변환 (권장)
 
 ```bash
 trtexec \
   --tacticSources=+CUBLAS_LT \
+  --directIO \
   --runtimePlatform=WindowsAMD64 \
   --hardwareCompatibilityLevel=ampere+ \
   --precisionConstraints=obey \
@@ -21,21 +24,65 @@ trtexec \
   --fp16
 ```
 
-기존 cmd 대비:
-- ➕ `--precisionConstraints=obey` — FP32 fallback cubin 제거 (disk 감축)
-- ➕ `--versionCompatible --excludeLeanRuntime` — lean runtime header 사용 (loading 감축)
-- ➖ `--directIO` — 측정 결과 효과 0, 제거 권장
+기존 사용자 cmd 에 **3 옵션 추가**:
+- ➕ `--precisionConstraints=obey` — FP32 fallback cubin 제거 (disk 감축, transformer 에서 큰 효과)
+- ➕ `--versionCompatible` — lean runtime header (loading 감축, **모든 모델**)
+- ➕ `--excludeLeanRuntime` — versionCompatible 의 짝
+- `--directIO` 는 그대로 유지 (효과 0 이지만 무해)
+
+### ✅ FP32 변환 (기존 cmd 그대로)
+
+```bash
+trtexec \
+  --tacticSources=+CUBLAS_LT \
+  --directIO \
+  --runtimePlatform=WindowsAMD64 \
+  --hardwareCompatibilityLevel=ampere+ \
+  --onnx=$ONNX \
+  --saveEngine=$ENGINE
+```
+
+**FP32 에는 3 옵션을 추가하지 마세요**:
+- `--precisionConstraints=obey` 는 FP32 에서 no-op (제거할 fallback 없음)
+- `--versionCompatible --excludeLeanRuntime` 은 FP32 에서 살짝 손해 (loading +50~150 ms)
+
+이유는 [docs/06-fp32-comparison.md](docs/06-fp32-comparison.md) 참조.
+
+### 파이프라인 wrapper 예시
+
+```bash
+if [[ "$PRECISION" == "fp16" ]]; then
+  trtexec ... --fp16 \
+    --precisionConstraints=obey \
+    --versionCompatible \
+    --excludeLeanRuntime
+else
+  trtexec ...      # FP32: 기존 cmd 유지
+fi
+```
 
 ## 검증된 효과 (TensorRT 10.8.0.43, RTX 3080 build / Windows runtime)
 
 | 모델 | FP16 Default (베이스) | **FP16 + 3옵션 (권장)** | FP32 Default (참고) |
 |------|---:|---:|---:|
-| **RF-DETR** (Flash Attention 사용) | 213 MiB / 27.7 s | **91 MiB / 0.48 s** | 160 MiB / 0.66 s |
-| **D-FINE** (일반 attention) | 128 MiB / 4.55 s | **86 MiB / 0.56 s** | 155 MiB / 0.47 s |
+| **RF-DETR** (Flash Attention 사용) | 213 MiB / 26.1 s | **91 MiB / 0.50 s** | 160 MiB / 0.61 s |
+| **D-FINE** (일반 attention) | 128 MiB / 4.69 s | **88 MiB / 0.58 s** | 155 MiB / 0.52 s |
+| **YOLOv7** (CNN, attention 없음) | 142 MiB / 4.08 s | **140 MiB / 0.20 s** | 278 MiB / 0.24 s |
 
-- RF-DETR: disk **−57%**, 로딩 **약 57배 단축**
-- D-FINE: disk **−33%**, 로딩 **약 8배 단축**
-- FP32 default 는 양쪽 모델 다 이미 로딩 빠름 → FP32 변환엔 추가 옵션 불필요
+- RF-DETR: disk **−57%**, 로딩 **52× 단축**
+- D-FINE:  disk **−31%**, 로딩 **8× 단축**
+- YOLOv7:  disk −1.5% (CNN 은 fallback 없음), 로딩 **20× 단축**
+- FP32 default 는 3 모델 모두 이미 로딩 빠름 → FP32 변환엔 추가 옵션 불필요
+
+## 검증 모델 요약
+
+| 모델 | 아키텍처 | 특징 | 권장 cmd 효과 |
+|---|---|---|---|
+| **RF-DETR** | Transformer + Flash Attention | DETR + Flash 통합. LayerNorm/Softmax 다수, plugin lib 다수 | Disk −57%, Loading 52× |
+| **D-FINE** | Transformer 일반 attention | DETR fine-grained, Flash 미사용. attention 변종 일부 | Disk −31%, Loading 8× |
+| **YOLOv7** | Pure CNN | Conv/BN/SiLU 만 (attention 없음). FP16-안전 op 만 사용 | Disk ~0%, Loading 20× |
+
+각 모델 상세 분석은 [모델별 특징 & cmd 적용 가이드](docs/10-model-overview.md) 참조.
 
 ## 핵심 발견
 
@@ -47,15 +94,27 @@ trtexec \
 ### Flash Attention 호환성
 `--precisionConstraints=obey` 는 Flash Attention 을 **오히려 더 강하게** 적용시킴. FP32 fallback 으로 분리되던 attention 블록이 모두 fused MHA 로 collapse (layer 수 264 → 241).
 
+### 정확도 영향 — `obey` 사용 시 주의
+회사 다른 분 측정 (Det 모델, 850장 기준) 에서 `obey + fp16` 적용 시 약 **2 bbox 차이 (~0.2%)** 발생. CNN 에선 영향 사실상 0, transformer 에선 검증 필요. 통제하려면 [정확도 가드 가이드](docs/11-accuracy-guard.md) 의 Tier 1~3 단계별 옵션 적용.
+
 ## 문서
 
+### 시작
 - [문제 정의 (cross-platform FP16 26초 로딩 이슈)](docs/01-problem-statement.md)
-- [옵션별 역할 상세](docs/02-options-explained.md)
+- [옵션별 역할 상세 (기술 구현 계층)](docs/02-options-explained.md)
 - [측정 방법론 (Docker on Windows + NGC TRT)](docs/03-benchmark-methodology.md)
-- [RF-DETR 매트릭스 결과](docs/04-results-rf-detr.md)
-- [D-FINE 매트릭스 결과](docs/05-results-d-fine.md)
+
+### 모델별 결과
+- [**모델별 특징 & cmd 적용 가이드 (RF-DETR / D-FINE / YOLOv7)**](docs/10-model-overview.md) ⭐
+- [RF-DETR 매트릭스 결과 (transformer + Flash Attention)](docs/04-results-rf-detr.md)
+- [D-FINE 매트릭스 결과 (transformer 일반 attention)](docs/05-results-d-fine.md)
+- [YOLOv7 매트릭스 결과 (CNN)](docs/08-results-yolov7.md)
+
+### Precision / 적용
 - [FP16 vs FP32 비교](docs/06-fp32-comparison.md)
 - [Production cmd & deploy 체크리스트](docs/07-recommended-cmd.md)
+- [**정확도 가드 (layerPrecisions / layerOutputTypes 활용)**](docs/11-accuracy-guard.md) ⭐
+- [**최종 검증 Table (3 모델 × 4 variant)**](docs/09-final-verification.md) ⭐
 
 ## 재현 (Reproduce)
 
@@ -72,12 +131,16 @@ python scripts/bench_load_python.py
 
 자세한 환경 셋업은 [docs/03-benchmark-methodology.md](docs/03-benchmark-methodology.md).
 
-## 적용 범위
+## 적용 범위 (실측 검증)
 
-- ✅ Transformer 기반 모델 (RF-DETR, DETR, ViT, Swin, LLM 등) — 큰 효과
-- ✅ Flash Attention 사용 모델 — 호환되며 오히려 더 적용
-- ⚠️ CNN 계열 (YOLO, ResNet) — 효과 미미하지만 부작용 없음 (안전한 통일 cmd)
-- ⚠️ FP32 모드 — 추가 옵션 불필요 (기존 cmd 그대로)
+| 모델 종류 | 권장 cmd 효과 | 정확도 영향 |
+|---|---|---|
+| Transformer + Flash Attention (RF-DETR 류) | disk **−57%**, 로딩 **52× 단축** | obey 적용 시 ~0.2% bbox 시프트 가능 (검증 필수) |
+| Transformer 일반 attention (D-FINE, DETR, ViT 류) | disk **−31%**, 로딩 **8× 단축** | obey 적용 시 ~0.1~0.2% 시프트 가능 |
+| CNN (YOLOv7, YOLO 시리즈, ResNet 등) | disk ~0% (fallback 없음), 로딩 **20× 단축** | obey 영향 사실상 0 |
+| FP32 모드 | 추가 옵션 불필요 | — |
+
+**결론**: 모델 종류 무관하게 loading 단축은 모든 모델에 효과적 (cross-platform full runtime header 의 비용은 보편적). Disk 절감은 transformer 에서 큰 효과. 정확도 우려 시 [정확도 가드 가이드](docs/11-accuracy-guard.md) 의 Tier 0~3 단계별 적용.
 
 ## 브랜치 정책
 

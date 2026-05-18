@@ -1,0 +1,3 @@
+name,onnx_variant,engine_bytes,engine_mib,build_seconds,exit_code,extra_flags
+variant3_directIO_obey,d-fine.onnx,91788028,87.54,323,0,"--hardwareCompatibilityLevel=ampere+ --directIO --tacticSources=+CUBLAS_LT --precisionConstraints=obey"
+variant4_directIO_full,d-fine.onnx,92346388,88.07,395,0,"--hardwareCompatibilityLevel=ampere+ --directIO --tacticSources=+CUBLAS_LT --precisionConstraints=obey --versionCompatible --excludeLeanRuntime"

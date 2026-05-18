@@ -1,0 +1,6 @@
+name,onnx_variant,engine_bytes,engine_mib,build_seconds,exit_code,extra_flags
+fp32_01_base_directIO,yolov7.onnx,291999060,278.47,121,0,"--hardwareCompatibilityLevel=ampere+ --directIO --tacticSources=+CUBLAS_LT"
+fp32_02_base,yolov7.onnx,292885308,279.32,120,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT"
+fp32_09_verCompat,yolov7.onnx,292919684,279.35,151,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --versionCompatible --excludeLeanRuntime"
+fp32_12_strict,yolov7.onnx,291259836,277.77,121,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --precisionConstraints=obey"
+fp32_15_strict_verCompat,yolov7.onnx,291972060,278.45,152,0,"--hardwareCompatibilityLevel=ampere+ --tacticSources=+CUBLAS_LT --precisionConstraints=obey --versionCompatible --excludeLeanRuntime"
