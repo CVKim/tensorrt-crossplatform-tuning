@@ -22,20 +22,22 @@ trtexec \
 ```
 
 기존 cmd 대비:
-- ➕ `--precisionConstraints=obey` — FP32 fallback cubin 제거 (disk 감축)
-- ➕ `--versionCompatible --excludeLeanRuntime` — lean runtime header 사용 (loading 감축)
-- ➖ `--directIO` — 측정 결과 효과 0, 제거 권장
+- ➕ `--precisionConstraints=obey` — FP32 fallback cubin 제거 (disk 감축, transformer 에서 큰 효과)
+- ➕ `--versionCompatible --excludeLeanRuntime` — lean runtime header 사용 (loading 감축, **모든 모델**)
+- `--directIO` 는 효과 0 이지만 유지해도 무해 (cmd 호환성 차원에서 유지 권장)
 
 ## 검증된 효과 (TensorRT 10.8.0.43, RTX 3080 build / Windows runtime)
 
 | 모델 | FP16 Default (베이스) | **FP16 + 3옵션 (권장)** | FP32 Default (참고) |
 |------|---:|---:|---:|
-| **RF-DETR** (Flash Attention 사용) | 213 MiB / 27.7 s | **91 MiB / 0.48 s** | 160 MiB / 0.66 s |
-| **D-FINE** (일반 attention) | 128 MiB / 4.55 s | **86 MiB / 0.56 s** | 155 MiB / 0.47 s |
+| **RF-DETR** (Flash Attention 사용) | 213 MiB / 26.1 s | **91 MiB / 0.50 s** | 160 MiB / 0.61 s |
+| **D-FINE** (일반 attention) | 128 MiB / 4.69 s | **88 MiB / 0.58 s** | 155 MiB / 0.52 s |
+| **YOLOv7** (CNN, attention 없음) | 142 MiB / 4.08 s | **140 MiB / 0.20 s** | 278 MiB / 0.24 s |
 
-- RF-DETR: disk **−57%**, 로딩 **약 57배 단축**
-- D-FINE: disk **−33%**, 로딩 **약 8배 단축**
-- FP32 default 는 양쪽 모델 다 이미 로딩 빠름 → FP32 변환엔 추가 옵션 불필요
+- RF-DETR: disk **−57%**, 로딩 **52× 단축**
+- D-FINE:  disk **−31%**, 로딩 **8× 단축**
+- YOLOv7:  disk −1.5% (CNN 은 fallback 없음), 로딩 **20× 단축**
+- FP32 default 는 3 모델 모두 이미 로딩 빠름 → FP32 변환엔 추가 옵션 불필요
 
 ## 핵심 발견
 
@@ -54,8 +56,10 @@ trtexec \
 - [측정 방법론 (Docker on Windows + NGC TRT)](docs/03-benchmark-methodology.md)
 - [RF-DETR 매트릭스 결과](docs/04-results-rf-detr.md)
 - [D-FINE 매트릭스 결과](docs/05-results-d-fine.md)
+- [YOLOv7 (CNN) 매트릭스 결과](docs/08-results-yolov7.md)
 - [FP16 vs FP32 비교](docs/06-fp32-comparison.md)
 - [Production cmd & deploy 체크리스트](docs/07-recommended-cmd.md)
+- [**최종 검증 Table (3 모델 × 4 variant)**](docs/09-final-verification.md) ⭐
 
 ## 재현 (Reproduce)
 
@@ -72,12 +76,14 @@ python scripts/bench_load_python.py
 
 자세한 환경 셋업은 [docs/03-benchmark-methodology.md](docs/03-benchmark-methodology.md).
 
-## 적용 범위
+## 적용 범위 (실측 검증)
 
-- ✅ Transformer 기반 모델 (RF-DETR, DETR, ViT, Swin, LLM 등) — 큰 효과
-- ✅ Flash Attention 사용 모델 — 호환되며 오히려 더 적용
-- ⚠️ CNN 계열 (YOLO, ResNet) — 효과 미미하지만 부작용 없음 (안전한 통일 cmd)
-- ⚠️ FP32 모드 — 추가 옵션 불필요 (기존 cmd 그대로)
+- ✅ Transformer + Flash Attention (RF-DETR): disk **−57%**, 로딩 **52× 단축**
+- ✅ Transformer 일반 attention (D-FINE): disk **−31%**, 로딩 **8× 단축**
+- ✅ **CNN (YOLOv7)**: disk −1.5% (CNN 은 fallback 없음), **로딩 20× 단축**
+- ⚠️ FP32 모드: 추가 옵션 불필요 (기존 cmd 그대로)
+
+**결론**: 모델 종류 무관하게 안전. cross-platform full runtime header 의 4~26초 로딩 비용은 모든 모델에 부담되었고, lean runtime 으로 swap 하면 모두 sub-1초로 단축.
 
 ## 브랜치 정책
 
