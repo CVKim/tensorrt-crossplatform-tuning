@@ -74,6 +74,16 @@ fi
 - YOLOv7:  disk −1.5% (CNN 은 fallback 없음), 로딩 **20× 단축**
 - FP32 default 는 3 모델 모두 이미 로딩 빠름 → FP32 변환엔 추가 옵션 불필요
 
+## 검증 모델 요약
+
+| 모델 | 아키텍처 | 특징 | 권장 cmd 효과 |
+|---|---|---|---|
+| **RF-DETR** | Transformer + Flash Attention | DETR + Flash 통합. LayerNorm/Softmax 다수, plugin lib 다수 | Disk −57%, Loading 52× |
+| **D-FINE** | Transformer 일반 attention | DETR fine-grained, Flash 미사용. attention 변종 일부 | Disk −31%, Loading 8× |
+| **YOLOv7** | Pure CNN | Conv/BN/SiLU 만 (attention 없음). FP16-안전 op 만 사용 | Disk ~0%, Loading 20× |
+
+각 모델 상세 분석은 [모델별 특징 & cmd 적용 가이드](docs/10-model-overview.md) 참조.
+
 ## 핵심 발견
 
 ### 왜 FP16 cross-platform 만 폭증하는가
@@ -84,16 +94,26 @@ fi
 ### Flash Attention 호환성
 `--precisionConstraints=obey` 는 Flash Attention 을 **오히려 더 강하게** 적용시킴. FP32 fallback 으로 분리되던 attention 블록이 모두 fused MHA 로 collapse (layer 수 264 → 241).
 
+### 정확도 영향 — `obey` 사용 시 주의
+회사 다른 분 측정 (Det 모델, 850장 기준) 에서 `obey + fp16` 적용 시 약 **2 bbox 차이 (~0.2%)** 발생. CNN 에선 영향 사실상 0, transformer 에선 검증 필요. 통제하려면 [정확도 가드 가이드](docs/11-accuracy-guard.md) 의 Tier 1~3 단계별 옵션 적용.
+
 ## 문서
 
+### 시작
 - [문제 정의 (cross-platform FP16 26초 로딩 이슈)](docs/01-problem-statement.md)
-- [옵션별 역할 상세](docs/02-options-explained.md)
+- [옵션별 역할 상세 (기술 구현 계층)](docs/02-options-explained.md)
 - [측정 방법론 (Docker on Windows + NGC TRT)](docs/03-benchmark-methodology.md)
-- [RF-DETR 매트릭스 결과](docs/04-results-rf-detr.md)
-- [D-FINE 매트릭스 결과](docs/05-results-d-fine.md)
-- [YOLOv7 (CNN) 매트릭스 결과](docs/08-results-yolov7.md)
+
+### 모델별 결과
+- [**모델별 특징 & cmd 적용 가이드 (RF-DETR / D-FINE / YOLOv7)**](docs/10-model-overview.md) ⭐
+- [RF-DETR 매트릭스 결과 (transformer + Flash Attention)](docs/04-results-rf-detr.md)
+- [D-FINE 매트릭스 결과 (transformer 일반 attention)](docs/05-results-d-fine.md)
+- [YOLOv7 매트릭스 결과 (CNN)](docs/08-results-yolov7.md)
+
+### Precision / 적용
 - [FP16 vs FP32 비교](docs/06-fp32-comparison.md)
 - [Production cmd & deploy 체크리스트](docs/07-recommended-cmd.md)
+- [**정확도 가드 (layerPrecisions / layerOutputTypes 활용)**](docs/11-accuracy-guard.md) ⭐
 - [**최종 검증 Table (3 모델 × 4 variant)**](docs/09-final-verification.md) ⭐
 
 ## 재현 (Reproduce)
@@ -113,12 +133,14 @@ python scripts/bench_load_python.py
 
 ## 적용 범위 (실측 검증)
 
-- ✅ Transformer + Flash Attention (RF-DETR): disk **−57%**, 로딩 **52× 단축**
-- ✅ Transformer 일반 attention (D-FINE): disk **−31%**, 로딩 **8× 단축**
-- ✅ **CNN (YOLOv7)**: disk −1.5% (CNN 은 fallback 없음), **로딩 20× 단축**
-- ⚠️ FP32 모드: 추가 옵션 불필요 (기존 cmd 그대로)
+| 모델 종류 | 권장 cmd 효과 | 정확도 영향 |
+|---|---|---|
+| Transformer + Flash Attention (RF-DETR 류) | disk **−57%**, 로딩 **52× 단축** | obey 적용 시 ~0.2% bbox 시프트 가능 (검증 필수) |
+| Transformer 일반 attention (D-FINE, DETR, ViT 류) | disk **−31%**, 로딩 **8× 단축** | obey 적용 시 ~0.1~0.2% 시프트 가능 |
+| CNN (YOLOv7, YOLO 시리즈, ResNet 등) | disk ~0% (fallback 없음), 로딩 **20× 단축** | obey 영향 사실상 0 |
+| FP32 모드 | 추가 옵션 불필요 | — |
 
-**결론**: 모델 종류 무관하게 안전. cross-platform full runtime header 의 4~26초 로딩 비용은 모든 모델에 부담되었고, lean runtime 으로 swap 하면 모두 sub-1초로 단축.
+**결론**: 모델 종류 무관하게 loading 단축은 모든 모델에 효과적 (cross-platform full runtime header 의 비용은 보편적). Disk 절감은 transformer 에서 큰 효과. 정확도 우려 시 [정확도 가드 가이드](docs/11-accuracy-guard.md) 의 Tier 0~3 단계별 적용.
 
 ## 브랜치 정책
 
