@@ -1,0 +1,6 @@
+option,description,build_host,mean_iou,mean_abs_delta_px,max_abs_delta_px,defects_with_shift
+opt1_cross_123_ampere,_123 + ampere+ (prior production),linux server (sm_89),0.9969,2.33,14,1
+opt2_cross_123_ampere_outFP32,_123 + ampere+ + layerOutputTypes=output:fp32,linux server (sm_89),0.9969,2.33,14,1
+opt3_cross_123_no_ampere,_123 only (new recommendation),linux server (sm_89),0.9996,0.33,2,1
+opt4_local_fp16,local fp16 only (reference),windows native (sm_89),1.0000,0.00,0,0
+opt5_local_fp16_obey,local fp16 + obey,windows native (sm_89),0.9995,0.33,2,1
